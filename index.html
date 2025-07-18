@@ -1,1 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatterbox TTS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://unpkg.com/wavesurfer.js@7"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">Chatterbox TTS</div>
+        </header>
 
+        <form id="genForm" class="main-form">
+            <div class="input-section">
+                <div class="input-column">
+                    <div class="drop-zone" id="dropZone">
+                        <div id="dropZoneInitialState">
+                            <div class="drop-zone-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <p class="drop-zone-text">Drag and drop files here</p>
+                            <p class="or-text">or</p>
+                            <button type="button" class="browse-btn" id="browseBtn">Browse files</button>
+                        </div>
+                        <div id="fileInfoContainer">
+                            <button type="button" id="removeFileBtn" class="remove-file-btn" title="Remove file">×</button>
+                            <div class="drop-zone-icon"><i class="fas fa-file-alt"></i></div>
+                            <p id="fileNameDisplay" class="drop-zone-text"></p>
+                        </div>
+                        <input type="file" id="fileInput" name="file" accept=".txt,.docx" hidden>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="split" name="split" checked class="checkbox-input">
+                        <label for="split" class="checkbox-label">Split into sentences</label>
+                    </div>
+                </div>
+                <textarea id="textInput" name="text" placeholder="Or enter custom text here..." class="text-input"></textarea>
+            </div>
+
+            <div class="controls-section">
+                <div class="control-group">
+                    <label for="voice" class="control-label">Voice:</label>
+                    <select id="voice" name="voice" class="control-select">
+                        <option value="">Loading Voices...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="voiceTemplate" class="control-label">Voice Template:</label>
+                    <select id="voiceTemplate" class="control-select">
+                        <option value="conversation">Conversation</option>
+                        <option value="storytelling">Storytelling</option>
+                        <option value="narration" selected>Narration</option>
+                    </select>
+                    <input type="hidden" id="exaggeration" name="exaggeration" value="0.5">
+                </div>
+                <div class="control-group slider-group">
+                    <label for="speed" class="control-label">Speed:</label>
+                    <input type="range" id="speed" name="speed" min="0.1" max="2.0" step="0.1" value="1.0" class="control-slider">
+                    <span id="labelSpeed" class="slider-value">1.0</span>
+                </div>
+                <button type="submit" class="generate-button">Generate Audio</button>
+            </div>
+        </form>
+
+        <section id="audioList" class="audio-list-section"></section>
+        <button id="joinAll" class="join-button" style="display: none;">Join All Lines</button>
+        <div id="joinedAudioContainer" class="joined-audio-container" style="display: none;">
+             <button id="playJoined" class="play-button" title="Play Joined Audio"><i class="fas fa-play"></i></button>
+             <div id="joinedWaveform"></div>
+        </div>
+    </div>
+
+    <div id="contextMenu" class="context-menu">
+        <ul>
+            <li id="getIpaMenuItem">
+                <span>IPA</span>
+                <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
+                <ul id="ipaSubMenu" class="submenu">
+                    <li id="ipaDisplay" style="display:none;">
+                        <span id="ipaText"></span>
+                        <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
+                        <ul class="submenu">
+                           <li id="replaceWithIpa">Replace with IPA</li>
+                        </ul>
+                    </li>
+                    <li id="ipaLoading" style="display:none;"><span>Loading IPA...</span></li>
+                </ul>
+            </li>
+            <li id="editPronunciation">Edit Pronunciation</li>
+        </ul>
+    </div>
+
+    <div id="pronunciationModal" class="modal">
+        <div class="modal-content">
+            <span class="close">×</span>
+            <h2>Edit Pronunciation</h2>
+            <p>Selected Word: <span id="selectedWord"></span></p>
+            <div class="pronunciation-controls">
+                <button id="uploadSourceBtn" class="control-btn graphical-btn" title="Upload Audio">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+                <input type="file" id="sourceAudioInput" accept=".wav,.mp3" hidden>
+                <button id="recordBtn" class="control-btn graphical-btn" title="Record Audio">
+                    <i class="fas fa-microphone"></i> Record
+                </button>
+                <select id="targetVoice" class="control-select">
+                    <option value="">Select Target Voice</option>
+                </select>
+                <button id="generateBtn" class="control-btn small-generate-button" title="Generate Audio">Generate Audio</button>
+            </div>
+            <div id="sourcePreview" class="audio-preview" style="display:none;">
+                <p>Source Audio:</p>
+                <div class="preview-controls">
+                    <button id="playSource" class="control-play-btn" title="Play Source"><i class="fas fa-play"></i></button>
+                    <div id="sourceWaveform" class="waveform"></div>
+                </div>
+            </div>
+            <div id="convertedPreview" class="audio-preview" style="display:none;">
+                <p>Generated Audio:</p>
+                <div class="preview-controls">
+                    <button id="playConverted" class="control-play-btn" title="Play Generated"><i class="fas fa-play"></i></button>
+                    <div id="convertedWaveform" class="waveform"></div>
+                </div>
+                <button id="replaceWordBtn" class="small-generate-button" style="margin-top: 10px; display:none;">Replace Word</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS AND VARIABLES ---
+        const voiceTemplates = { conversation: 0.9, storytelling: 0.75, narration: 0.5 };
+        let currentSessionId = null;
+        let lastRequestedPlay = null; 
+        let wavesurferInstances = {};
+        let joinedWavesurfer = null;
+
+        const contextMenu = document.getElementById("contextMenu");
+        let activeTextarea = null;
+        let selectionDetails = { start: 0, end: 0, text: "" };
+        let currentIpa = "";
+
+        // Pronunciation Modal Variables
+        let sourceAudioFile = null;
+        let mediaRecorder = null;
+        let isRecording = false;
+        let sourceWavesurfer = null;
+        let convertedWavesurfer = null;
+        let currentConvertedUrl = null;
+
+        // --- MODAL SETUP ---
+        const pronunciationModal = document.getElementById("pronunciationModal");
+        const modalClose = pronunciationModal.querySelector(".close");
+
+        modalClose.addEventListener("click", () => {
+            pronunciationModal.style.display = "none";
+            resetPronunciationModal();
+        });
+
+        window.addEventListener("click", (e) => {
+            if (e.target === pronunciationModal) {
+                pronunciationModal.style.display = "none";
+                resetPronunciationModal();
+            }
+        });
+
+        function resetPronunciationModal() {
+            sourceAudioFile = null;
+            if (sourceWavesurfer) sourceWavesurfer.destroy();
+            if (convertedWavesurfer) convertedWavesurfer.destroy();
+            document.getElementById('sourcePreview').style.display = 'none';
+            document.getElementById('convertedPreview').style.display = 'none';
+            document.getElementById('replaceWordBtn').style.display = 'none';
+            document.getElementById('recordBtn').innerHTML = '<i class="fas fa-microphone"></i> Record';
+            document.getElementById('sourceAudioInput').value = '';
+            isRecording = false;
+            currentConvertedUrl = null;
+        }
+
+        // --- CORE FUNCTIONS ---
+        async function fetchVoices() {
+            const dropdown = document.getElementById("voice");
+            const modalDropdown = document.getElementById("targetVoice");
+            try {
+                const res = await fetch("/voices/");
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                const voices = await res.json();
+                dropdown.innerHTML = '<option value="">Select a Voice</option>';
+                modalDropdown.innerHTML = '<option value="">Select Target Voice</option>';
+                voices.forEach(v => {
+                    const opt = document.createElement("option");
+                    opt.value = v;
+                    opt.textContent = v.replace(/\.(mp3|wav)$/i, '');
+                    dropdown.appendChild(opt.cloneNode(true));
+                    modalDropdown.appendChild(opt);
+                });
+                if (voices.length > 0) dropdown.value = voices[0];
+            } catch (error) { console.error("Failed to fetch voices:", error); }
+        }
+
+        async function regenerateBlockAudio(blockItem, playAfter = false) {
+            const index = blockItem.dataset.index;
+            const wavesurfer = wavesurferInstances[index];
+            const text = blockItem.querySelector('.line-text-input').value;
+            const session_id = currentSessionId;
+            const voice = document.getElementById("voice").value;
+            const exaggeration = document.getElementById("exaggeration").value;
+            const speed = document.getElementById("speed").value;
+
+            let customs = JSON.parse(blockItem.dataset.customPronunciations || '[]');
+            let slices = [];
+            let genIndex = 0;
+            let pos = 0;
+            const sortedCustoms = customs.sort((a, b) => a.start - b.start);
+            for (let cust of sortedCustoms) {
+                if (pos < cust.start) {
+                    const partText = text.substring(pos, cust.start).trim();
+                    if (partText) {
+                        slices.push({type: 'gen', text: partText, index: genIndex++});
+                    }
+                }
+                slices.push({type: 'custom', url: cust.audioUrl});
+                pos = cust.end;
+            }
+            if (pos < text.length) {
+                const partText = text.substring(pos).trim();
+                if (partText) {
+                    slices.push({type: 'gen', text: partText, index: genIndex++});
+                }
+            }
+
+            if (slices.length === 0) {
+                slices.push({type: 'gen', text: text, index: 0});
+            }
+
+            const genPromises = slices.filter(s => s.type === 'gen').map(async (s) => {
+                const genForm = new FormData();
+                genForm.append("text", s.text);
+                genForm.append("voice", voice);
+                genForm.append("exaggeration", exaggeration);
+                genForm.append("speed", speed);
+                genForm.append("session_id", session_id);
+                genForm.append("index", s.index);
+                const result = await fetch("/regenerate/", { method: "POST", body: genForm });
+                if (!result.ok) throw new Error((await result.json()).detail);
+                const { url } = await result.json();
+                s.url = url;
+            });
+
+            await Promise.all(genPromises);
+
+            let ordered = slices.map(s => s.type === 'gen' ? `/audio/${session_id}/${s.index}.wav` : s.url);
+
+            let newUrl;
+            if (ordered.length === 1 && slices[0].type === 'gen') {
+                newUrl = slices[0].url;
+            } else {
+                const joinResponse = await fetch(`/join/${session_id}/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ordered_audio_paths: ordered })
+                });
+                if (!joinResponse.ok) throw new Error((await joinResponse.json()).detail);
+                const { url: joinedUrl } = await joinResponse.json();
+                newUrl = joinedUrl;
+            }
+
+            blockItem.dataset.audioUrl = newUrl;
+            blockItem.querySelector('.download-button').disabled = false;
+
+            const onReady = () => {
+                if (playAfter && lastRequestedPlay === blockItem) {
+                    wavesurfer.play();
+                }
+                wavesurfer.un('ready', onReady);
+            };
+            wavesurfer.on('ready', onReady);
+            wavesurfer.load(newUrl);
+        }
+
+        async function generateBlockAudioSilently(blockItem) {
+            try {
+                await regenerateBlockAudio(blockItem, false);
+            } catch (error) {
+                console.error(`Silent generation failed for block ${blockItem.dataset.index}: ${error.message}`);
+                throw error;
+            }
+        }
+
+        async function generateBlockAudio(blockItem) {
+            const playButton = blockItem.querySelector(".play-button");
+            const playIcon = playButton.querySelector("i");
+            playIcon.className = "fas fa-sync-alt spinner";
+            playButton.disabled = true;
+            lastRequestedPlay = blockItem;
+
+            try {
+                await regenerateBlockAudio(blockItem, true);
+            } catch (error) {
+                alert(`Failed to generate audio for this block: ${error.message}.`);
+                if (lastRequestedPlay === blockItem) {
+                    playIcon.className = "fas fa-play";
+                }
+            } finally {
+                playButton.disabled = false;
+            }
+        }
+
+        function createAudioLineItem(text = "", audioUrl = "", index = null, hasAudio = true) {
+            const itemIndex = index !== null ? index : Date.now();
+            const audioLineItem = document.createElement("div");
+            audioLineItem.className = "audio-line-item";
+            audioLineItem.draggable = true;
+            audioLineItem.dataset.index = itemIndex;
+            if (audioUrl) {
+                audioLineItem.dataset.audioUrl = audioUrl;
+            }
+            
+            const voiceSelect = document.getElementById("voice");
+            const selectedVoiceName = voiceSelect.options[voiceSelect.selectedIndex].textContent;
+            const firstLetter = selectedVoiceName.charAt(0).toUpperCase() || 'P';
+            audioLineItem.innerHTML = `
+                <div class="profile-pic">
+                    <img src="https://placehold.co/36x36/6a82fb/ffffff?text=${firstLetter}" alt="Profile Pic">
+                </div>
+                <div class="block-content">
+                    <textarea class="line-text-input" rows="2" cols="60" draggable="false">${text}</textarea>
+                    <div class="audio-controls">
+                        <div id="waveform-${itemIndex}" class="waveform"></div>
+                        <div class="action-buttons">
+                            <button class="regenerate-button" title="Regenerate"><i class="fas fa-sync-alt"></i></button>
+                            <button class="delete-button" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                            <button class="play-button" title="Play"><i class="fas fa-play"></i></button>
+                            <button class="download-button" title="Download"><i class="fas fa-download"></i></button>
+                        </div>
+                    </div>
+                </div>`;
+            const downloadButton = audioLineItem.querySelector(".download-button");
+            downloadButton.disabled = !hasAudio;
+            
+            const wavesurfer = WaveSurfer.create({
+                container: audioLineItem.querySelector(`#waveform-${itemIndex}`),
+                waveColor: '#A8B5E0',
+                progressColor: '#6a82fb',
+                height: 40,
+                cursorWidth: 1,
+                barWidth: 2,
+                barGap: 3,
+                barRadius: 3,
+                url: audioUrl,
+            });
+            wavesurferInstances[itemIndex] = wavesurfer;
+
+            const playButton = audioLineItem.querySelector(".play-button");
+            const playIcon = playButton.querySelector("i");
+            
+            wavesurfer.on('play', () => playIcon.className = 'fas fa-pause');
+            wavesurfer.on('pause', () => playIcon.className = 'fas fa-play');
+            wavesurfer.on('finish', () => playIcon.className = 'fas fa-play');
+            wavesurfer.on('loading', (percent) => {
+                if (percent < 100) {
+                    playIcon.className = "fas fa-sync-alt spinner";
+                    playButton.disabled = true;
+                } else {
+                    playIcon.className = "fas fa-play";
+                    playButton.disabled = false;
+                }
+            });
+            downloadButton.addEventListener('click', () => {
+                const audioSrc = audioLineItem.dataset.audioUrl;
+                if (!audioSrc) return;
+                const a = document.createElement('a');
+                a.href = audioSrc;
+                const nameText = audioLineItem.querySelector('.line-text-input').value.substring(0, 20).replace(/[^a-z0-9]/gi, '_');
+                a.download = `chatterbox_${itemIndex}_${nameText}.wav`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+            playButton.addEventListener('click', () => {
+                if (audioLineItem.dataset.audioUrl) {
+                    wavesurfer.playPause();
+                } else {
+                    generateBlockAudio(audioLineItem);
+                }
+            });
+
+            audioLineItem.querySelector(".delete-button").onclick = () => {
+                wavesurfer.destroy();
+                delete wavesurferInstances[itemIndex];
+                audioLineItem.remove();
+                updateItemIndices();
+            };
+
+            audioLineItem.querySelector(".regenerate-button").onclick = () => {
+                delete audioLineItem.dataset.audioUrl;
+                downloadButton.disabled = true;
+                generateBlockAudio(audioLineItem);
+            };
+
+            return audioLineItem;
+        }
+
+        function updateItemIndices() {
+            const newInstances = {};
+            document.querySelectorAll(".audio-line-item").forEach((item, idx) => {
+                const oldIndex = item.dataset.index;
+                if (oldIndex != idx) {
+                    item.dataset.index = idx;
+                    item.querySelector('.waveform').id = `waveform-${idx}`;
+                    newInstances[idx] = wavesurferInstances[oldIndex];
+                } else {
+                    newInstances[idx] = wavesurferInstances[oldIndex];
+                }
+            });
+            wavesurferInstances = newInstances;
+        }
+        
+        function renderAddNewTextButton() {
+            const audioListSection = document.getElementById("audioList");
+            let addNewButton = document.getElementById("addNewText");
+            if (!addNewButton) {
+                addNewButton = document.createElement("button");
+                addNewButton.id = "addNewText";
+                addNewButton.className = "add-new-text-button"; 
+                addNewButton.innerHTML = `<i class="fas fa-plus"></i> ADD A BLOCK`;
+                addNewButton.addEventListener("click", () => {
+                    const button = document.getElementById('addNewText');
+                    const newBlock = createAudioLineItem("", "", Object.keys(wavesurferInstances).length, false);
+                    audioListSection.insertBefore(newBlock, button);
+                    updateItemIndices();
+                    newBlock.querySelector(".line-text-input").focus();
+                });
+            }
+            if (audioListSection.lastChild !== addNewButton) {
+                audioListSection.appendChild(addNewButton);
+            }
+        }
+
+        // --- DRAG AND DROP LOGIC ---
+        let draggedItemElement = null;
+        let placeholder = document.createElement("div");
+        placeholder.className = "placeholder";
+        const audioListContainer = document.getElementById("audioList");
+        audioListContainer.addEventListener("dragstart", (e) => {
+            if (e.target.closest('.line-text-input')) { e.preventDefault(); return; }
+            draggedItemElement = e.target.closest(".audio-line-item");
+            if (draggedItemElement) {
+                placeholder.style.height = `${draggedItemElement.offsetHeight}px`;
+                setTimeout(() => { draggedItemElement.classList.add("dragging"); }, 0);
+            }
+        });
+        audioListContainer.addEventListener("dragenter", (e) => {
+            e.preventDefault();
+            const targetItem = e.target.closest(".audio-line-item");
+            if (targetItem && targetItem !== draggedItemElement) {
+                const rect = targetItem.getBoundingClientRect();
+                const offset = e.clientY - rect.top - rect.height / 2;
+                audioListContainer.insertBefore(placeholder, offset > 0 ? targetItem.nextSibling : targetItem);
+            }
+        });
+        audioListContainer.addEventListener("dragover", (e) => e.preventDefault());
+
+        audioListContainer.addEventListener("drop", (e) => {
+            e.preventDefault();
+            if (placeholder.parentNode) {
+                placeholder.parentNode.replaceChild(draggedItemElement, placeholder);
+            }
+        });
+        audioListContainer.addEventListener("dragend", () => {
+            if (draggedItemElement) { draggedItemElement.classList.remove("dragging"); }
+            draggedItemElement = null;
+            if (placeholder.parentNode) { placeholder.parentNode.removeChild(placeholder); }
+            updateItemIndices();
+        });
+
+        // ---- CONTEXT MENU LOGIC ----
+        audioListContainer.addEventListener("mouseup", (e) => {
+            if (e.target.classList.contains('line-text-input')) {
+                setTimeout(() => {
+                    const textarea = e.target;
+                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+                    
+                    document.getElementById('ipaDisplay').style.display = 'none';
+                    document.getElementById('ipaLoading').style.display = 'none';
+
+                    if (selectedText.length > 0) {
+                        activeTextarea = textarea;
+                        selectionDetails = {
+                            start: textarea.selectionStart,
+                            end: textarea.selectionEnd,
+                            text: selectedText
+                        };
+                        contextMenu.style.top = `${e.pageY}px`;
+                        contextMenu.style.left = `${e.pageX}px`;
+                        contextMenu.style.display = "block";
+                    } else {
+                        contextMenu.style.display = "none";
+                    }
+                }, 10);
+            }
+        });
+
+        document.addEventListener("click", (e) => {
+            if (!contextMenu.contains(e.target)) {
+                 contextMenu.style.display = "none";
+            }
+        });
+        
+        document.getElementById('getIpaMenuItem').addEventListener('mouseenter', async () => {
+            const ipaLoading = document.getElementById('ipaLoading');
+            const ipaDisplay = document.getElementById('ipaDisplay');
+            const ipaText = document.getElementById('ipaText');
+
+            ipaLoading.style.display = 'block';
+            ipaDisplay.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('word', selectionDetails.text);
+            try {
+                const res = await fetch('/get_ipa/', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error('Failed to fetch IPA');
+                const data = await res.json();
+                currentIpa = data.ipa;
+                ipaText.textContent = `/${currentIpa}/`;
+                ipaLoading.style.display = 'none';
+                ipaDisplay.style.display = 'flex';
+            } catch (err) {
+                ipaText.textContent = 'Error';
+                console.error(err);
+            }
+        });
+        
+        document.getElementById('replaceWithIpa').addEventListener('click', (e) => {
+             e.stopPropagation();
+            if (activeTextarea && currentIpa) {
+                const start = selectionDetails.start;
+                const end = selectionDetails.end;
+                const text = activeTextarea.value;
+                activeTextarea.value = text.substring(0, start) + `{${currentIpa}}` + text.substring(end);
+            }
+            contextMenu.style.display = "none";
+        });
+
+        document.getElementById('editPronunciation').addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.getElementById('selectedWord').innerText = selectionDetails.text;
+            pronunciationModal.style.display = "flex";
+            contextMenu.style.display = "none";
+            fetchVoices();
+        });
+
+        // --- PRONUNCIATION MODAL LOGIC ---
+        const uploadSourceBtn = document.getElementById('uploadSourceBtn');
+        const sourceAudioInput = document.getElementById('sourceAudioInput');
+        const recordBtn = document.getElementById('recordBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const playSourceBtn = document.getElementById('playSource');
+        const playConvertedBtn = document.getElementById('playConverted');
+        const replaceWordBtn = document.getElementById('replaceWordBtn');
+
+        uploadSourceBtn.addEventListener('click', () => sourceAudioInput.click());
+
+        sourceAudioInput.addEventListener('change', () => {
+            if (sourceAudioInput.files.length > 0) {
+                sourceAudioFile = sourceAudioInput.files[0];
+                loadSourceAudio(URL.createObjectURL(sourceAudioFile));
+            }
+        });
+
+        recordBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    const chunks = [];
+                    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'audio/wav' });
+                        sourceAudioFile = new File([blob], 'recorded.wav', { type: 'audio/wav' });
+                        loadSourceAudio(URL.createObjectURL(sourceAudioFile));
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                } catch (err) {
+                    alert('Failed to start recording: ' + err.message);
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.innerHTML = '<i class="fas fa-microphone"></i> Record';
+            }
+        });
+
+        function loadSourceAudio(url) {
+            const sourcePreview = document.getElementById('sourcePreview');
+            sourcePreview.style.display = 'flex';
+            if (sourceWavesurfer) sourceWavesurfer.destroy();
+            sourceWavesurfer = WaveSurfer.create({
+                container: '#sourceWaveform',
+                waveColor: '#A8B5E0',
+                progressColor: '#6a82fb',
+                height: 40,
+                cursorWidth: 1,
+                barWidth: 2,
+                barGap: 3,
+                barRadius: 3,
+                url: url,
+            });
+            sourceWavesurfer.on('play', () => playSourceBtn.querySelector('i').className = 'fas fa-pause');
+            sourceWavesurfer.on('pause', () => playSourceBtn.querySelector('i').className = 'fas fa-play');
+            sourceWavesurfer.on('finish', () => playSourceBtn.querySelector('i').className = 'fas fa-play');
+            playSourceBtn.onclick = () => sourceWavesurfer.playPause();
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            if (!sourceAudioFile) {
+                alert('Please upload or record an audio file first.');
+                return;
+            }
+            const targetVoice = document.getElementById('targetVoice').value;
+            if (!targetVoice) {
+                alert('Please select a target voice.');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('source_audio', sourceAudioFile);
+            formData.append('target_voice', targetVoice);
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<i class="fas fa-sync-alt spinner"></i> Generating...';
+            try {
+                const res = await fetch('/voice_conversion/', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error((await res.json()).detail);
+                const { url } = await res.json();
+                currentConvertedUrl = url;
+                const convertedPreview = document.getElementById('convertedPreview');
+                convertedPreview.style.display = 'flex';
+                if (convertedWavesurfer) convertedWavesurfer.destroy();
+                convertedWavesurfer = WaveSurfer.create({
+                    container: '#convertedWaveform',
+                    waveColor: '#A8B5E0',
+                    progressColor: '#6a82fb',
+                    height: 40,
+                    cursorWidth: 1,
+                    barWidth: 2,
+                    barGap: 3,
+                    barRadius: 3,
+                    url: url,
+                });
+                convertedWavesurfer.on('play', () => playConvertedBtn.querySelector('i').className = 'fas fa-pause');
+                convertedWavesurfer.on('pause', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
+                convertedWavesurfer.on('finish', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
+                playConvertedBtn.onclick = () => convertedWavesurfer.playPause();
+                document.getElementById('replaceWordBtn').style.display = 'block';
+            } catch (error) {
+                alert(`Failed to generate converted audio: ${error.message}`);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = 'Generate Audio';
+            }
+        });
+
+        replaceWordBtn.addEventListener('click', () => {
+            if (!activeTextarea || !currentConvertedUrl) return;
+            const block = activeTextarea.closest('.audio-line-item');
+            if (!block) return;
+            let customs = JSON.parse(block.dataset.customPronunciations || '[]');
+            const newCustom = {start: selectionDetails.start, end: selectionDetails.end, audioUrl: currentConvertedUrl};
+            const existingIndex = customs.findIndex(c => c.start === newCustom.start && c.end === newCustom.end);
+            if (existingIndex > -1) {
+                customs[existingIndex] = newCustom;
+            } else {
+                customs.push(newCustom);
+            }
+            block.dataset.customPronunciations = JSON.stringify(customs);
+            pronunciationModal.style.display = "none";
+            resetPronunciationModal();
+        });
+
+        // --- FORM SUBMISSION AND JOINING ---
+        document.getElementById("genForm").addEventListener("submit", async e => {
+            e.preventDefault();
+            const form = e.target;
+            const generateButton = form.querySelector('.generate-button');
+            const audioListSection = document.getElementById("audioList");
+            const joinAllButton = document.getElementById("joinAll");
+
+            if (!form.text.value.trim() && !form.file.files.length) {
+                return alert("Please provide text or upload a file.");
+            }
+            
+            Object.values(wavesurferInstances).forEach(ws => ws.destroy());
+            wavesurferInstances = {};
+            if(joinedWavesurfer) joinedWavesurfer.destroy();
+            document.getElementById('joinedAudioContainer').style.display = 'none';
+
+            audioListSection.innerHTML = "";
+            joinAllButton.style.display = "none";
+            generateButton.disabled = true;
+
+            const splitChecked = document.getElementById('split').checked;
+            try {
+                if (splitChecked) {
+                    const prepFormData = new FormData();
+                    if(form.file.files.length > 0) {
+                        prepFormData.append('file', form.file.files[0]);
+                    } else {
+                        prepFormData.append('text', form.text.value);
+                    }
+                    const res = await fetch("/prepare_text_blocks/", { method: "POST", body: prepFormData });
+                    if (!res.ok) throw new Error((await res.json()).detail);
+                    const { session_id, lines } = await res.json();
+                    currentSessionId = session_id;
+                    lines.forEach((line, i) => {
+                        audioListSection.appendChild(createAudioLineItem(line, "", i, false));
+                    });
+                } else {
+                    const formData = new FormData(form);
+                    if (formData.has('split')) formData.set('split', 'off');
+                    const res = await fetch("/generate/", { method: "POST", body: formData });
+                    if (!res.ok) throw new Error((await res.json()).detail);
+                    const { session_id, lines, clients } = await res.json();
+                    currentSessionId = session_id;
+                    lines.forEach((line, i) => {
+                        audioListSection.appendChild(createAudioLineItem(line, clients[i], i, true));
+                    });
+                }
+
+                if (audioListSection.hasChildNodes()) {
+                    joinAllButton.style.display = "block";
+                    renderAddNewTextButton();
+                }
+
+            } catch (error) {
+                alert(`Failed to generate: ${error.message}.`);
+            } finally {
+                generateButton.disabled = false;
+            }
+        });
+        
+        document.getElementById("joinAll").addEventListener("click", async () => {
+            const joinButton = document.getElementById("joinAll");
+            joinButton.disabled = true;
+            joinButton.textContent = "Generating & Joining...";
+
+            const audioItems = Array.from(document.querySelectorAll(".audio-line-item"));
+            const generationPromises = [];
+
+            audioItems.forEach(item => {
+                if (!item.dataset.audioUrl) {
+                    generationPromises.push(generateBlockAudioSilently(item));
+                }
+            });
+
+            try {
+                await Promise.all(generationPromises);
+
+                const orderedAudioPaths = audioItems.map(item => {
+                    const audioSrc = item.dataset.audioUrl;
+                    return audioSrc.split('?')[0];
+                });
+
+                const joinResponse = await fetch(`/join/${currentSessionId}/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ordered_audio_paths: orderedAudioPaths })
+                });
+                if (!joinResponse.ok) throw new Error((await joinResponse.json()).detail);
+
+                const { url: joinedUrl } = await joinResponse.json();
+                const joinedContainer = document.getElementById('joinedAudioContainer');
+                joinedContainer.style.display = 'flex';
+                
+                if (joinedWavesurfer) {
+                    joinedWavesurfer.destroy();
+                }
+
+                joinedWavesurfer = WaveSurfer.create({
+                    container: '#joinedWaveform',
+                    waveColor: '#A8B5E0',
+                    progressColor: '#6a82fb',
+                    height: 60,
+                    cursorWidth: 2,
+                    url: joinedUrl,
+                });
+                const playJoinedBtn = document.getElementById('playJoined');
+                const playJoinedIcon = playJoinedBtn.querySelector('i');
+                joinedWavesurfer.on('play', () => playJoinedIcon.className = 'fas fa-pause');
+                joinedWavesurfer.on('pause', () => playJoinedIcon.className = 'fas fa-play');
+                joinedWavesurfer.on('finish', () => playJoinedIcon.className = 'fas fa-play');
+                playJoinedBtn.onclick = () => joinedWavesurfer.playPause();
+            } catch (error) {
+                alert(`Failed to join audio: ${error.message}`);
+            } finally {
+                joinButton.disabled = false;
+                joinButton.textContent = "Join All Lines";
+            }
+        });
+
+        // --- INITIALIZATION ---
+        document.getElementById('voiceTemplate').addEventListener('change', (e) => {
+            const selectedTone = e.target.value;
+            document.getElementById('exaggeration').value = voiceTemplates[selectedTone];
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            document.getElementById('labelSpeed').textContent = parseFloat(e.target.value).toFixed(1);
+        });
+
+        window.onload = () => {
+            fetchVoices();
+            renderAddNewTextButton();
+
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            const browseBtn = document.getElementById('browseBtn');
+            const dropZoneInitialState = document.getElementById('dropZoneInitialState');
+            const fileInfoContainer = document.getElementById('fileInfoContainer');
+            const fileNameDisplay = document.getElementById('fileNameDisplay');
+            const removeFileBtn = document.getElementById('removeFileBtn');
+
+            browseBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    fileNameDisplay.textContent = fileInput.files[0].name;
+                    dropZoneInitialState.style.display = 'none';
+                    fileInfoContainer.style.display = 'flex';
+                }
+            });
+            removeFileBtn.addEventListener('click', () => {
+                fileInput.value = '';
+                fileInfoContainer.style.display = 'none';
+                dropZoneInitialState.style.display = 'flex';
+            });
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    fileInput.files = e.dataTransfer.files;
+                    fileInput.dispatchEvent(new Event('change'));
+                }
+            });
+        };
+    </script>
+</body>
+</html>
