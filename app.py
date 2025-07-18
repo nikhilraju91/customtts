@@ -1,4 +1,4 @@
-import os, uuid, torch, nltk, numpy as np, soundfile as s
+import os, uuid, torch, nltk, numpy as np, soundfile as sf
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
