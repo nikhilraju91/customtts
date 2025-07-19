@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from nltk.tokenize import sent_tokenize
 from typing import List
 import shutil
+import requests
+from bs4 import BeautifulSoup
+import io
 
 # Add the 'src' directory to Python's system path
 import sys
@@ -230,3 +233,31 @@ async def voice_conversion(
         return JSONResponse({"url": f"/audio/{session_id}/converted.wav"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Voice conversion failed: {e}")
+
+@app.post("/get_merriam_audio/")
+async def get_merriam_audio(word: str = Form(...)):
+    try:
+        dict_url = f"https://www.merriam-webster.com/dictionary/{word}"
+        response = requests.get(dict_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        pron_link = soup.find('a', class_='play-pron-v2')
+        if not pron_link:
+            raise ValueError("Pronunciation link not found.")
+        data_dir = pron_link.get('data-dir')
+        data_file = pron_link.get('data-file')
+        if not data_dir or not data_file:
+            raise ValueError("Data attributes not found.")
+        mp3_url = f"https://media.merriam-webster.com/audio/prons/en/us/mp3/{data_dir}/{data_file}.mp3"
+        mp3_resp = requests.get(mp3_url)
+        mp3_resp.raise_for_status()
+        session_id = str(uuid.uuid4())
+        folder = os.path.join("audio", session_id)
+        os.makedirs(folder, exist_ok=True)
+        wav_path = os.path.join(folder, "pron.wav")
+        audio_data = io.BytesIO(mp3_resp.content)
+        data, sr = sf.read(audio_data)
+        sf.write(wav_path, data, sr)
+        return JSONResponse({"url": f"/audio/{session_id}/pron.wav"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get audio from Merriam-Webster: {str(e)}")
