@@ -261,3 +261,71 @@ async def get_merriam_audio(word: str = Form(...)):
         return JSONResponse({"url": f"/audio/{session_id}/pron.wav"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get audio from Merriam-Webster: {str(e)}")
+
+@app.post("/get_pronunciation_suggestions/")
+async def get_pronunciation_suggestions(word: str = Form(...)):
+    try:
+        # Fetch from Dictionary API (free, no key)
+        dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word.lower()}"
+        response = requests.get(dict_url)
+        if response.status_code != 200:
+            raise ValueError("Dictionary API request failed.")
+        data = response.json()
+        ipas = []
+        for entry in data:
+            for phonetic in entry.get('phonetics', []):
+                ipa_text = phonetic.get('text', '').strip('/').strip()
+                if ipa_text:
+                    ipas.append(ipa_text)
+        if not ipas:
+            # Fallback to eng_to_ipa
+            ipas = [ipa_convert(word.lower()).strip('/').strip()]
+        
+        # Improved function to generate respellings with more variations
+        def ipa_to_respellings(ipa):
+            # Expanded mappings with more options for better suggestions
+            mappings = {
+                'ˈ': ['', ''],
+                'ˌ': ['', ''],
+                'f': ['f', 'ph'],
+                'ɔ': ['aw', 'o', 'or', 'ah'],
+                'ɑ': ['ah', 'a', 'ar'],
+                'r': ['r', 'rr'],
+                'ə': ['uh', 'e', 'a', 'er'],
+                'ɪ': ['i', 'ih', 'ee'],
+                's': ['s', 'ss'],
+                't': ['t', 'tt'],
+                '.': ['', ''],  # Syllable separator
+                ':': ['', ''],  # Length marker
+                'ɹ': ['r', 'rr'],
+                'ɛ': ['eh', 'e', 'ai'],
+                'ʌ': ['uh', 'u', 'a'],
+                'ɒ': ['o', 'aw', 'ah']
+            }
+            # Generate combinations (limit to avoid explosion)
+            respellings = ['']
+            for char in ipa.lower():
+                if char in mappings:
+                    new_respellings = []
+                    options = mappings[char]
+                    for option in options:
+                        for base in respellings:
+                            new_respellings.append(base + option)
+                    respellings = new_respellings[:len(options) * 2]  # Limit growth
+                else:
+                    respellings = [base + char for base in respellings]
+            # Unique, filter empty, limit to 6, concatenate without hyphens
+            unique_respellings = list(set([r for r in respellings if r]))[:6]
+            return unique_respellings or [word.lower() + 'ist']  # Fallback
+        
+        all_respellings = []
+        for ipa in ipas:
+            all_respellings.extend(ipa_to_respellings(ipa))
+        
+        unique_suggestions = list(set(all_respellings))[:6]
+        if len(unique_suggestions) < 3:
+            unique_suggestions.extend([f"{word.lower()}ist", f"{word.lower()}est", f"{word.lower()}uhst"])  # Better generics
+        
+        return JSONResponse({"suggestions": unique_suggestions})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get suggestions: {str(e)}")
