@@ -480,11 +480,12 @@ body {
 
 .modal-content {
     background-color: #ffffff;
+    border: 2px solid #d1d5db;
     border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
     padding: 24px;
     width: 100%;
-    max-width: 480px;
+    max-width: 600px;
     position: relative;
     animation: modalFadeIn 0.3s ease-out;
 }
@@ -526,6 +527,7 @@ body {
     align-items: center;
     gap: 10px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
 }
 
 .control-btn {
@@ -542,6 +544,8 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 100px; /* to prevent overlay */
+    justify-content: center;
 }
 
 .control-btn:hover {
