@@ -112,6 +112,7 @@
                     <option value="">Select Target Voice</option>
                 </select>
                 <button id="generateBtn" class="control-btn small-generate-button" title="Generate Audio">Generate Audio</button>
+                <button id="getMerriamBtn" class="control-btn small-generate-button" title="Get from Merriam-Webster">Merriam-Webster</button>
             </div>
             <div id="sourcePreview" class="audio-preview" style="display:none;">
                 <p>Source Audio:</p>
@@ -319,6 +320,7 @@
             if (audioUrl) {
                 audioLineItem.dataset.audioUrl = audioUrl;
             }
+            audioLineItem.dataset.customPronunciations = "[]";
             
             const voiceSelect = document.getElementById("voice");
             const selectedVoiceName = voiceSelect.options[voiceSelect.selectedIndex].textContent;
@@ -559,6 +561,7 @@
         const sourceAudioInput = document.getElementById('sourceAudioInput');
         const recordBtn = document.getElementById('recordBtn');
         const generateBtn = document.getElementById('generateBtn');
+        const getMerriamBtn = document.getElementById('getMerriamBtn');
         const playSourceBtn = document.getElementById('playSource');
         const playConvertedBtn = document.getElementById('playConverted');
         const replaceWordBtn = document.getElementById('replaceWordBtn');
@@ -619,6 +622,29 @@
             playSourceBtn.onclick = () => sourceWavesurfer.playPause();
         }
 
+        function loadConvertedAudio(url) {
+            currentConvertedUrl = url;
+            const convertedPreview = document.getElementById('convertedPreview');
+            convertedPreview.style.display = 'flex';
+            if (convertedWavesurfer) convertedWavesurfer.destroy();
+            convertedWavesurfer = WaveSurfer.create({
+                container: '#convertedWaveform',
+                waveColor: '#A8B5E0',
+                progressColor: '#6a82fb',
+                height: 40,
+                cursorWidth: 1,
+                barWidth: 2,
+                barGap: 3,
+                barRadius: 3,
+                url: url,
+            });
+            convertedWavesurfer.on('play', () => playConvertedBtn.querySelector('i').className = 'fas fa-pause');
+            convertedWavesurfer.on('pause', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
+            convertedWavesurfer.on('finish', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
+            playConvertedBtn.onclick = () => convertedWavesurfer.playPause();
+            document.getElementById('replaceWordBtn').style.display = 'block';
+        }
+
         generateBtn.addEventListener('click', async () => {
             if (!sourceAudioFile) {
                 alert('Please upload or record an audio file first.');
@@ -638,31 +664,36 @@
                 const res = await fetch('/voice_conversion/', { method: 'POST', body: formData });
                 if (!res.ok) throw new Error((await res.json()).detail);
                 const { url } = await res.json();
-                currentConvertedUrl = url;
-                const convertedPreview = document.getElementById('convertedPreview');
-                convertedPreview.style.display = 'flex';
-                if (convertedWavesurfer) convertedWavesurfer.destroy();
-                convertedWavesurfer = WaveSurfer.create({
-                    container: '#convertedWaveform',
-                    waveColor: '#A8B5E0',
-                    progressColor: '#6a82fb',
-                    height: 40,
-                    cursorWidth: 1,
-                    barWidth: 2,
-                    barGap: 3,
-                    barRadius: 3,
-                    url: url,
-                });
-                convertedWavesurfer.on('play', () => playConvertedBtn.querySelector('i').className = 'fas fa-pause');
-                convertedWavesurfer.on('pause', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
-                convertedWavesurfer.on('finish', () => playConvertedBtn.querySelector('i').className = 'fas fa-play');
-                playConvertedBtn.onclick = () => convertedWavesurfer.playPause();
-                document.getElementById('replaceWordBtn').style.display = 'block';
+                loadConvertedAudio(url);
             } catch (error) {
                 alert(`Failed to generate converted audio: ${error.message}`);
             } finally {
                 generateBtn.disabled = false;
                 generateBtn.innerHTML = 'Generate Audio';
+            }
+        });
+
+        getMerriamBtn.addEventListener('click', async () => {
+            const word = document.getElementById('selectedWord').textContent;
+            if (!word) return;
+            getMerriamBtn.disabled = true;
+            getMerriamBtn.innerHTML = '<i class="fas fa-sync-alt spinner"></i> Fetching...';
+            const formData = new FormData();
+            formData.append('word', word);
+            try {
+                const res = await fetch('/get_merriam_audio/', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error((await res.json()).detail);
+                const { url } = await res.json();
+                // Fetch the audio as blob to set as sourceAudioFile
+                const audioResp = await fetch(url);
+                const blob = await audioResp.blob();
+                sourceAudioFile = new File([blob], 'merriam.wav', { type: 'audio/wav' });
+                loadSourceAudio(url);
+            } catch (error) {
+                alert(`Failed to get audio from Merriam-Webster: ${error.message}`);
+            } finally {
+                getMerriamBtn.disabled = false;
+                getMerriamBtn.innerHTML = 'Merriam-Webster';
             }
         });
 
@@ -728,7 +759,8 @@
                     const { session_id, lines, clients } = await res.json();
                     currentSessionId = session_id;
                     lines.forEach((line, i) => {
-                        audioListSection.appendChild(createAudioLineItem(line, clients[i], i, true));
+                        audioLineItem = createAudioLineItem(line, clients[i], i, true);
+                        audioListSection.appendChild(audioLineItem);
                     });
                 }
 
