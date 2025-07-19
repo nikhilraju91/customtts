@@ -79,17 +79,6 @@
         <ul>
             <li id="getIpaMenuItem">
                 <span>IPA</span>
-                <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
-                <ul id="ipaSubMenu" class="submenu">
-                    <li id="ipaDisplay" style="display:none;">
-                        <span id="ipaText"></span>
-                        <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
-                        <ul class="submenu">
-                           <li id="replaceWithIpa">Replace with IPA</li>
-                        </ul>
-                    </li>
-                    <li id="ipaLoading" style="display:none;"><span>Loading IPA...</span></li>
-                </ul>
             </li>
             <li id="editPronunciation">Edit Pronunciation</li>
         </ul>
@@ -132,6 +121,26 @@
         </div>
     </div>
 
+    <!-- New IPA Suggestions Modal -->
+    <div id="ipaSuggestionsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">×</span>
+            <div class="ipa-header">
+                <span id="ipaWord" class="ipa-word"></span>
+                <button id="playOriginal" class="play-button small-play-btn" title="Play Original"><i class="fas fa-play"></i></button>
+            </div>
+            <div class="smart-suggestions">
+                <h3>Smart Suggestions</h3>
+                <ul id="suggestionsList"></ul>
+            </div>
+            <div class="modal-actions">
+                <button id="managePronunciations" class="secondary-button">Manage Pronunciations</button>
+                <button id="applyToProject" class="apply-button">Apply to Project</button>
+                <button id="applyButton" class="primary-button">Apply</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- CONSTANTS AND VARIABLES ---
         const voiceTemplates = { conversation: 0.9, storytelling: 0.75, narration: 0.5 };
@@ -152,6 +161,13 @@
         let sourceWavesurfer = null;
         let convertedWavesurfer = null;
         let currentConvertedUrl = null;
+
+        // IPA Suggestions Modal Variables
+        const ipaSuggestionsModal = document.getElementById("ipaSuggestionsModal");
+        const ipaModalClose = ipaSuggestionsModal.querySelector(".close");
+        let originalWordAudioUrl = null;
+        let suggestionAudioUrls = {};
+        let selectedSuggestion = null;
 
         // --- MODAL SETUP ---
         const pronunciationModal = document.getElementById("pronunciationModal");
@@ -180,6 +196,26 @@
             document.getElementById('sourceAudioInput').value = '';
             isRecording = false;
             currentConvertedUrl = null;
+        }
+
+        // IPA Suggestions Modal Setup
+        ipaModalClose.addEventListener("click", () => {
+            ipaSuggestionsModal.style.display = "none";
+            resetIpaSuggestionsModal();
+        });
+
+        window.addEventListener("click", (e) => {
+            if (e.target === ipaSuggestionsModal) {
+                ipaSuggestionsModal.style.display = "none";
+                resetIpaSuggestionsModal();
+            }
+        });
+
+        function resetIpaSuggestionsModal() {
+            originalWordAudioUrl = null;
+            suggestionAudioUrls = {};
+            selectedSuggestion = null;
+            document.getElementById('suggestionsList').innerHTML = '';
         }
 
         // --- CORE FUNCTIONS ---
@@ -486,9 +522,6 @@
                 setTimeout(() => {
                     const textarea = e.target;
                     const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
-                    
-                    document.getElementById('ipaDisplay').style.display = 'none';
-                    document.getElementById('ipaLoading').style.display = 'none';
 
                     if (selectedText.length > 0) {
                         activeTextarea = textarea;
@@ -513,39 +546,120 @@
             }
         });
         
-        document.getElementById('getIpaMenuItem').addEventListener('mouseenter', async () => {
-            const ipaLoading = document.getElementById('ipaLoading');
-            const ipaDisplay = document.getElementById('ipaDisplay');
-            const ipaText = document.getElementById('ipaText');
-
-            ipaLoading.style.display = 'block';
-            ipaDisplay.style.display = 'none';
-
+        document.getElementById('getIpaMenuItem').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            contextMenu.style.display = "none";
+            document.getElementById('ipaWord').textContent = selectionDetails.text;
+            ipaSuggestionsModal.style.display = "flex";
+            
+            // Fetch suggestions
             const formData = new FormData();
             formData.append('word', selectionDetails.text);
             try {
-                const res = await fetch('/get_ipa/', { method: 'POST', body: formData });
-                if (!res.ok) throw new Error('Failed to fetch IPA');
-                const data = await res.json();
-                currentIpa = data.ipa;
-                ipaText.textContent = `/${currentIpa}/`;
-                ipaLoading.style.display = 'none';
-                ipaDisplay.style.display = 'flex';
+                const res = await fetch('/get_pronunciation_suggestions/', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error('Failed to fetch suggestions');
+                const { suggestions } = await res.json();
+                const list = document.getElementById('suggestionsList');
+                list.innerHTML = '';
+                suggestions.forEach((sugg, idx) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <input type="radio" name="suggestion" id="sugg${idx}" value="${sugg}">
+                        <label for="sugg${idx}">${sugg}</label>
+                        <button class="play-suggestion small-play-btn" data-sugg="${sugg}" title="Play Suggestion"><i class="fas fa-play"></i></button>
+                    `;
+                    list.appendChild(li);
+                });
+
+                // Handle radio selection
+                list.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        selectedSuggestion = e.target.value;
+                    });
+                });
+
+                // Handle play suggestion
+                list.querySelectorAll('.play-suggestion').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const sugg = e.target.closest('button').dataset.sugg;
+                        if (suggestionAudioUrls[sugg]) {
+                            // Play existing
+                            const audio = new Audio(suggestionAudioUrls[sugg]);
+                            audio.play();
+                        } else {
+                            // Generate
+                            const genForm = new FormData();
+                            genForm.append("text", sugg);
+                            genForm.append("split", "off");
+                            genForm.append("voice", document.getElementById("voice").value);
+                            genForm.append("exaggeration", document.getElementById("exaggeration").value);
+                            genForm.append("speed", document.getElementById("speed").value);
+                            const res = await fetch("/generate/", { method: "POST", body: genForm });
+                            if (!res.ok) throw new Error('Failed to generate preview');
+                            const { clients } = await res.json();
+                            suggestionAudioUrls[sugg] = clients[0];
+                            const audio = new Audio(clients[0]);
+                            audio.play();
+                        }
+                    });
+                });
             } catch (err) {
-                ipaText.textContent = 'Error';
                 console.error(err);
+                alert('Failed to load suggestions');
+            }
+
+            // Generate original word audio if not exists
+            if (!originalWordAudioUrl) {
+                const genForm = new FormData();
+                genForm.append("text", selectionDetails.text);
+                genForm.append("split", "off");
+                genForm.append("voice", document.getElementById("voice").value);
+                genForm.append("exaggeration", document.getElementById("exaggeration").value);
+                genForm.append("speed", document.getElementById("speed").value);
+                try {
+                    const res = await fetch("/generate/", { method: "POST", body: genForm });
+                    if (!res.ok) throw new Error('Failed to generate original preview');
+                    const { clients } = await res.json();
+                    originalWordAudioUrl = clients[0];
+                } catch (err) {
+                    console.error(err);
+                }
             }
         });
         
-        document.getElementById('replaceWithIpa').addEventListener('click', (e) => {
-             e.stopPropagation();
-            if (activeTextarea && currentIpa) {
+        // Play original
+        document.getElementById('playOriginal').addEventListener('click', () => {
+            if (originalWordAudioUrl) {
+                const audio = new Audio(originalWordAudioUrl);
+                audio.play();
+            }
+        });
+
+        // Apply button
+        document.getElementById('applyButton').addEventListener('click', () => {
+            if (selectedSuggestion && activeTextarea) {
                 const start = selectionDetails.start;
                 const end = selectionDetails.end;
                 const text = activeTextarea.value;
-                activeTextarea.value = text.substring(0, start) + `{${currentIpa}}` + text.substring(end);
+                activeTextarea.value = text.substring(0, start) + selectedSuggestion + text.substring(end);
+                // Regenerate the block
+                const blockItem = activeTextarea.closest('.audio-line-item');
+                if (blockItem) {
+                    regenerateBlockAudio(blockItem);
+                }
             }
-            contextMenu.style.display = "none";
+            ipaSuggestionsModal.style.display = "none";
+            resetIpaSuggestionsModal();
+        });
+
+        // Placeholder for Manage Pronunciations
+        document.getElementById('managePronunciations').addEventListener('click', () => {
+            alert('Manage Pronunciations - Coming soon');
+        });
+
+        // Placeholder for Apply to Project
+        document.getElementById('applyToProject').addEventListener('click', () => {
+            alert('Apply to Project - Coming soon');
         });
 
         document.getElementById('editPronunciation').addEventListener('click', (e) => {
